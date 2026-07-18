@@ -9,8 +9,8 @@ and MVUX.
 
 - **Works with anything that plays music** — reads the Windows media session (the same
   source as the volume flyout); Spotify is preferred when several players are open
-- **Synced lyrics** from [LRCLIB](https://lrclib.net), fetched automatically per track
-  and cached
+- **Synced lyrics** from [LRCLIB](https://lrclib.net), with NetEase and Kugou as
+  automatic fallbacks for recent or lesser-known tracks; everything is cached locally
 - **Game-ready overlay** — always click-through, topmost (re-asserted so games can't
   steal it), hidden from Alt-Tab, never takes focus, moves across virtual desktops
 - **Customizable** — lyric color presets, font size, background panel opacity
@@ -33,7 +33,6 @@ dotnet publish -f net10.0-desktop -c Release -p:PublishProfile=win-x64
 
 ## Notes
 
-- Games in true *exclusive fullscreen* bypass the compositor and can't be overlaid —
-  use borderless/windowed fullscreen (the default in most modern games).
-- Lyrics availability depends on LRCLIB's community database.
+- Lyrics come from community databases; the source that served each song is shown in
+  the app.
 - Settings and the lyrics cache live in `%LOCALAPPDATA%\LyricSync`.

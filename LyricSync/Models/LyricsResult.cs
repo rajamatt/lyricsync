@@ -11,7 +11,7 @@ public enum LyricsStatus
     Error,
 }
 
-public sealed record LyricsResult(LyricsStatus Status, IReadOnlyList<LyricLine> Lines, string? PlainLyrics)
+public sealed record LyricsResult(LyricsStatus Status, IReadOnlyList<LyricLine> Lines, string? PlainLyrics, string? Source = null)
 {
     public static readonly LyricsResult NotFound = new(LyricsStatus.NotFound, [], null);
     public static readonly LyricsResult Error = new(LyricsStatus.Error, [], null);

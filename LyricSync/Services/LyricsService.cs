@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -8,23 +7,39 @@ using LyricSync.Models;
 namespace LyricSync.Services;
 
 /// <summary>
-/// Fetches time-synced lyrics from LRCLIB (https://lrclib.net) — a free, open lyrics
-/// database that requires no API key — with an in-memory and on-disk cache.
+/// Orchestrates the lyrics providers: LRCLIB first (best quality), then NetEase and
+/// Kugou as fallbacks for recent/lesser-known tracks. The first provider returning
+/// parseable synced lyrics wins; plain (unsynced) lyrics are kept as a last resort.
+/// Results are cached in memory and on disk.
 /// </summary>
 public sealed class LyricsService
 {
-    private const string BaseUrl = "https://lrclib.net/api";
+    private static readonly TimeSpan PerProviderTimeout = TimeSpan.FromSeconds(8);
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private readonly HttpClient _http;
+    private readonly IReadOnlyList<ILyricsProvider> _providers;
     private readonly ConcurrentDictionary<string, LyricsResult> _memoryCache = new();
     private readonly string _cacheDir;
 
     public LyricsService()
     {
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
+        // Cookies must stay OFF: NetEase sets session cookies on the first response and
+        // then serves trending/unrelated results to searches carrying them (anti-scraping).
+        // With no cookie jar every request looks fresh, matching plain curl behavior.
+        _http = new HttpClient(new HttpClientHandler { UseCookies = false })
+        {
+            Timeout = TimeSpan.FromSeconds(12),
+        };
         _http.DefaultRequestHeaders.UserAgent.TryParseAdd("LyricSync/1.0");
+
+        _providers =
+        [
+            new LrclibProvider(_http),
+            new NeteaseLyricsProvider(_http),
+            new KugouLyricsProvider(_http),
+        ];
 
         _cacheDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -72,82 +87,74 @@ public sealed class LyricsService
             return BuildResult(diskCached);
         }
 
-        try
+        CachedLyrics? plainFallback = null;
+        var anyProviderFailed = false;
+
+        foreach (var provider in _providers)
         {
-            var record = await QueryLrclibAsync(track, ct);
-            if (record is null)
+            ct.ThrowIfCancellationRequested();
+
+            ProviderLyrics? found;
+            try
             {
-                return LyricsResult.NotFound;
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(PerProviderTimeout);
+                found = await provider.TryGetAsync(track, timeout.Token);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw; // real cancellation (track changed), not a provider timeout
+            }
+            catch
+            {
+                anyProviderFailed = true;
+                continue;
             }
 
-            WriteDiskCache(track, record);
-            return BuildResult(record);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            return LyricsResult.Error;
-        }
-    }
-
-    private async Task<LrclibTrack?> QueryLrclibAsync(TrackInfo track, CancellationToken ct)
-    {
-        // 1. Exact lookup — LRCLIB matches with a small duration tolerance.
-        if (track.DurationSeconds > 0)
-        {
-            var url = $"{BaseUrl}/get?track_name={Uri.EscapeDataString(track.Title)}" +
-                      $"&artist_name={Uri.EscapeDataString(track.Artist)}" +
-                      $"&album_name={Uri.EscapeDataString(track.Album)}" +
-                      $"&duration={track.DurationSeconds}";
-
-            var exact = await GetJsonAsync<LrclibTrack>(url, ct);
-            if (exact is not null)
+            if (found is null)
             {
-                return exact;
+                continue;
+            }
+
+            if (found.Instrumental)
+            {
+                var instrumental = new CachedLyrics { Instrumental = true, Source = provider.Name };
+                WriteDiskCache(track, instrumental);
+                return BuildResult(instrumental);
+            }
+
+            if (!string.IsNullOrEmpty(found.SyncedLrc) && LrcParser.Parse(found.SyncedLrc).Count > 0)
+            {
+                var synced = new CachedLyrics
+                {
+                    SyncedLyrics = found.SyncedLrc,
+                    PlainLyrics = found.PlainLyrics,
+                    Source = provider.Name,
+                };
+                WriteDiskCache(track, synced);
+                return BuildResult(synced);
+            }
+
+            if (plainFallback is null && !string.IsNullOrEmpty(found.PlainLyrics))
+            {
+                plainFallback = new CachedLyrics { PlainLyrics = found.PlainLyrics, Source = provider.Name };
             }
         }
 
-        // 2. Fuzzy search fallback.
-        var searchUrl = $"{BaseUrl}/search?track_name={Uri.EscapeDataString(track.Title)}" +
-                        $"&artist_name={Uri.EscapeDataString(track.Artist)}";
-        var candidates = await GetJsonAsync<List<LrclibTrack>>(searchUrl, ct);
-        if (candidates is null || candidates.Count == 0)
+        if (plainFallback is not null)
         {
-            return null;
+            WriteDiskCache(track, plainFallback);
+            return BuildResult(plainFallback);
         }
 
-        return candidates
-            .OrderByDescending(c => !string.IsNullOrEmpty(c.SyncedLyrics))
-            .ThenBy(c => track.DurationSeconds > 0 && c.Duration is > 0
-                ? Math.Abs(c.Duration.Value - track.DurationSeconds)
-                : double.MaxValue)
-            .FirstOrDefault(c => !string.IsNullOrEmpty(c.SyncedLyrics)
-                || !string.IsNullOrEmpty(c.PlainLyrics)
-                || c.Instrumental);
+        return anyProviderFailed ? LyricsResult.Error : LyricsResult.NotFound;
     }
 
-    private async Task<T?> GetJsonAsync<T>(string url, CancellationToken ct)
-        where T : class
-    {
-        using var response = await _http.GetAsync(url, ct);
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct);
-    }
-
-    private static LyricsResult BuildResult(LrclibTrack record)
+    private static LyricsResult BuildResult(CachedLyrics record)
     {
         if (record.Instrumental)
         {
-            return LyricsResult.Instrumental;
+            return LyricsResult.Instrumental with { Source = record.Source };
         }
 
         if (!string.IsNullOrEmpty(record.SyncedLyrics))
@@ -155,13 +162,13 @@ public sealed class LyricsService
             var lines = LrcParser.Parse(record.SyncedLyrics);
             if (lines.Count > 0)
             {
-                return new LyricsResult(LyricsStatus.Synced, lines, record.PlainLyrics);
+                return new LyricsResult(LyricsStatus.Synced, lines, record.PlainLyrics, record.Source);
             }
         }
 
         if (!string.IsNullOrEmpty(record.PlainLyrics))
         {
-            return new LyricsResult(LyricsStatus.PlainOnly, [], record.PlainLyrics);
+            return new LyricsResult(LyricsStatus.PlainOnly, [], record.PlainLyrics, record.Source);
         }
 
         return LyricsResult.NotFound;
@@ -173,7 +180,7 @@ public sealed class LyricsService
         return Path.Combine(_cacheDir, $"{hash}.json");
     }
 
-    private LrclibTrack? TryReadDiskCache(TrackInfo track)
+    private CachedLyrics? TryReadDiskCache(TrackInfo track)
     {
         try
         {
@@ -183,7 +190,7 @@ public sealed class LyricsService
                 return null;
             }
 
-            return JsonSerializer.Deserialize<LrclibTrack>(File.ReadAllText(path), JsonOptions);
+            return JsonSerializer.Deserialize<CachedLyrics>(File.ReadAllText(path), JsonOptions);
         }
         catch
         {
@@ -191,7 +198,7 @@ public sealed class LyricsService
         }
     }
 
-    private void WriteDiskCache(TrackInfo track, LrclibTrack record)
+    private void WriteDiskCache(TrackInfo track, CachedLyrics record)
     {
         try
         {
@@ -204,14 +211,16 @@ public sealed class LyricsService
         }
     }
 
-    private sealed class LrclibTrack
+    /// <summary>
+    /// On-disk cache entry. Property names intentionally match the pre-provider-chain
+    /// format (which stored raw LRCLIB responses), so existing cache files keep working;
+    /// their null Source is displayed as LRCLIB, which is what they came from.
+    /// </summary>
+    private sealed class CachedLyrics
     {
-        public string? TrackName { get; set; }
-        public string? ArtistName { get; set; }
-        public string? AlbumName { get; set; }
-        public double? Duration { get; set; }
         public bool Instrumental { get; set; }
         public string? PlainLyrics { get; set; }
         public string? SyncedLyrics { get; set; }
+        public string? Source { get; set; }
     }
 }

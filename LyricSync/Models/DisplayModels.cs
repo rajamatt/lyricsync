@@ -89,10 +89,10 @@ public sealed record TrackLyrics(TrackInfo Track, LyricsResult? Result)
 
     public string StatusText => Result?.Status switch
     {
-        LyricsStatus.Synced => $"Synced lyrics · {Result.Lines.Count} lines · LRCLIB",
-        LyricsStatus.PlainOnly => "Lyrics found, but without timestamps",
+        LyricsStatus.Synced => $"Synced lyrics · {Result.Lines.Count} lines · {Result.Source ?? "LRCLIB"}",
+        LyricsStatus.PlainOnly => $"Lyrics found, but without timestamps · {Result.Source ?? "LRCLIB"}",
         LyricsStatus.Instrumental => "Instrumental track",
-        LyricsStatus.Error => "Could not reach the lyrics service",
+        LyricsStatus.Error => "Could not reach the lyrics services",
         LyricsStatus.NotFound => "No lyrics found for this track",
         _ => string.Empty,
     };
