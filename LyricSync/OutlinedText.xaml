@@ -1,0 +1,63 @@
+<UserControl
+    x:Class="LyricSync.OutlinedText"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Text with a thin dark outline: four offset copies behind the main text.
+    On the color-keyed overlay window, glyph anti-aliasing blends toward pure black
+    (the transparency key), which reads as a jagged dark fringe once the background
+    panel fades; the outline absorbs that fringe and keeps text readable over any
+    content. The outline color matches the panel (#0D1014) and must never be pure
+    black, or it would be keyed out. Font properties (size, weight, foreground)
+    inherit from the control itself.
+  -->
+  <Grid>
+    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+               Foreground="#FF0D1014"
+               TextAlignment="Center"
+               TextWrapping="{x:Bind Wrapping, Mode=OneWay}"
+               TextTrimming="{x:Bind Trimming, Mode=OneWay}"
+               MaxLines="{x:Bind MaxTextLines, Mode=OneWay}">
+      <TextBlock.RenderTransform>
+        <TranslateTransform X="-1.4" />
+      </TextBlock.RenderTransform>
+    </TextBlock>
+    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+               Foreground="#FF0D1014"
+               TextAlignment="Center"
+               TextWrapping="{x:Bind Wrapping, Mode=OneWay}"
+               TextTrimming="{x:Bind Trimming, Mode=OneWay}"
+               MaxLines="{x:Bind MaxTextLines, Mode=OneWay}">
+      <TextBlock.RenderTransform>
+        <TranslateTransform X="1.4" />
+      </TextBlock.RenderTransform>
+    </TextBlock>
+    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+               Foreground="#FF0D1014"
+               TextAlignment="Center"
+               TextWrapping="{x:Bind Wrapping, Mode=OneWay}"
+               TextTrimming="{x:Bind Trimming, Mode=OneWay}"
+               MaxLines="{x:Bind MaxTextLines, Mode=OneWay}">
+      <TextBlock.RenderTransform>
+        <TranslateTransform Y="-1.4" />
+      </TextBlock.RenderTransform>
+    </TextBlock>
+    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+               Foreground="#FF0D1014"
+               TextAlignment="Center"
+               TextWrapping="{x:Bind Wrapping, Mode=OneWay}"
+               TextTrimming="{x:Bind Trimming, Mode=OneWay}"
+               MaxLines="{x:Bind MaxTextLines, Mode=OneWay}">
+      <TextBlock.RenderTransform>
+        <TranslateTransform Y="1.4" />
+      </TextBlock.RenderTransform>
+    </TextBlock>
+
+    <TextBlock Text="{x:Bind Text, Mode=OneWay}"
+               TextAlignment="Center"
+               TextWrapping="{x:Bind Wrapping, Mode=OneWay}"
+               TextTrimming="{x:Bind Trimming, Mode=OneWay}"
+               MaxLines="{x:Bind MaxTextLines, Mode=OneWay}" />
+  </Grid>
+</UserControl>

@@ -1,0 +1,72 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-desktop</TargetFrameworks>
+
+    <OutputType>Exe</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+
+    <!-- Display name -->
+    <ApplicationTitle>LyricSync</ApplicationTitle>
+    <!-- App Identifier -->
+    <ApplicationId>uno.platform.lyricsync</ApplicationId>
+    <!-- Versions -->
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <!-- Package Publisher -->
+    <ApplicationPublisher>LyricSync</ApplicationPublisher>
+    <!-- Package Description -->
+    <Description>LyricSync powered by Uno Platform.</Description>
+
+    <!--
+      UnoFeatures are used to quickly add and manage features enabled for your app.
+      https://aka.platform.uno/singleproject-features
+    -->
+    <UnoFeatures>
+      Mvux;
+      SkiaRenderer;
+    </UnoFeatures>
+
+    <!-- Required for the IVirtualDesktopManager COM interop used by the overlay on Windows -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+
+    <!--
+      Memory footprint tuning. LyricSync is a small, mostly-idle background overlay, so
+      we optimize the GC for low memory rather than throughput:
+       - Workstation (not Server) GC: one small heap instead of one per CPU core.
+       - Non-concurrent: no extra background-GC heap reservation.
+      Combined with System.GC.ConserveMemory below, the runtime keeps far less memory
+      committed and returns freed segments to the OS.
+    -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredCompilation>true</TieredCompilation>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 0–9; higher = trade GC speed for lower memory and eager segment release. -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="9" Trim="false" />
+  </ItemGroup>
+
+  <!--
+    Windows SDK .NET projections referenced directly so the desktop (Skia) target can read
+    the system media session (Windows.Media.Control) on Windows. These assemblies are only
+    loaded at runtime behind OperatingSystem.IsWindows() guards; on other OSes they are inert.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.NET.Ref" GeneratePathProperty="true" ExcludeAssets="all" />
+    <!-- Aliased: Uno defines its own Windows.* types, so the SDK projection must not
+         be visible in the global namespace. Consumers use `extern alias winsdk`. -->
+    <Reference Include="Microsoft.Windows.SDK.NET">
+      <HintPath>$(PkgMicrosoft_Windows_SDK_NET_Ref)\lib\net8.0\Microsoft.Windows.SDK.NET.dll</HintPath>
+      <Aliases>winsdk</Aliases>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="WinRT.Runtime">
+      <HintPath>$(PkgMicrosoft_Windows_SDK_NET_Ref)\lib\net8.0\WinRT.Runtime.dll</HintPath>
+      <Aliases>winsdk</Aliases>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
