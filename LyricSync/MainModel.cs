@@ -46,6 +46,9 @@ public partial record MainModel(
 
     // --- Track: emits only when the song (or its late-arriving duration) changes ----
 
+    /// <summary>Bumped by <see cref="ClearLyricsCache"/> to force a re-fetch of the current song.</summary>
+    private int _generation;
+
     public IFeed<TrackInfo> Track => Feed.AsyncEnumerable(TrackChanges);
 
     private async IAsyncEnumerable<TrackInfo> TrackChanges([EnumeratorCancellation] CancellationToken ct = default)
@@ -55,7 +58,7 @@ public partial record MainModel(
 
         while (!ct.IsCancellationRequested)
         {
-            var track = Media.Current?.Track ?? TrackInfo.None;
+            var track = (Media.Current?.Track ?? TrackInfo.None) with { Generation = _generation };
             if (track != last)
             {
                 last = track;
@@ -154,4 +157,11 @@ public partial record MainModel(
     public async ValueTask ToggleOverlay(CancellationToken ct) => Overlay.RequestToggle();
 
     public async ValueTask ToggleMoveOverlay(CancellationToken ct) => Overlay.RequestToggleMoveMode();
+
+    /// <summary>Wipes the lyrics caches and re-fetches lyrics for the current song.</summary>
+    public async ValueTask ClearLyricsCache(CancellationToken ct)
+    {
+        LyricsService.ClearCache();
+        Interlocked.Increment(ref _generation);
+    }
 }

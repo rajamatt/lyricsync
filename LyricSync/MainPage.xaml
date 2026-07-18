@@ -170,6 +170,21 @@
 
         <Border Style="{StaticResource SettingDividerStyle}" />
 
+        <!-- Lyrics cache -->
+        <Grid ColumnDefinitions="130,*"
+              MinHeight="40">
+          <TextBlock Text="Lyrics cache"
+                     Style="{StaticResource SettingLabelStyle}" />
+          <Button Grid.Column="1"
+                  Content="Clear cache"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  Command="{Binding ClearLyricsCache}"
+                  ToolTipService.ToolTip="Deletes downloaded lyrics; the current song is fetched again immediately." />
+        </Grid>
+
+        <Border Style="{StaticResource SettingDividerStyle}" />
+
         <!-- Background opacity -->
         <Grid ColumnDefinitions="130,*,44"
               ColumnSpacing="10"

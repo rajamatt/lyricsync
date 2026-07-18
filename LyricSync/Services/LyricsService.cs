@@ -31,6 +31,23 @@ public sealed class LyricsService
             "LyricSync", "lyrics-cache");
     }
 
+    /// <summary>Wipes both the in-memory and on-disk lyrics caches.</summary>
+    public void ClearCache()
+    {
+        _memoryCache.Clear();
+        try
+        {
+            if (Directory.Exists(_cacheDir))
+            {
+                Directory.Delete(_cacheDir, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best effort — a locked file just means some entries survive until next time.
+        }
+    }
+
     public async Task<LyricsResult> GetLyricsAsync(TrackInfo track, CancellationToken ct)
     {
         var cacheKey = $"{track.Key}\n{track.DurationSeconds}";
